@@ -1,3 +1,5 @@
+var $ = jQuery = require("jquery");
+
 const teams = ['Aliens', 'Humans'];
 const Orientation = Object.freeze({
     VERTICAL: Symbol('vertical'),
@@ -11,6 +13,10 @@ const Status = Object.freeze({
 class Point {
     x = null;
     y = null;
+    constructor(x, y) {
+        this.x = x;
+        this.y = y;
+    }
 }
 
 class Association {
@@ -22,6 +28,14 @@ class Association {
     }
 }
 
+class ShipPart {
+    status = Status.NOTHIT;
+    point = null;
+    constructor(point, status) {
+        this.status = status;
+        this.point = point;
+    }
+}
 class Ship {
     length = 1;
     direction = Orientation.VERTICAL;
@@ -30,14 +44,18 @@ class Ship {
     constructor(length) {
         this.length = length;
         for (let i = 0; i < this.length; i++) {
-            this.parts.push({
-                state: Status.NOTHIT
-            });
+            this.parts.push( new ShipPart(null, Status.NOTHIT) );
         }
     }
 
-    setHit(part) {
-        this.parts[part] = Status.HIT;
+    setHit(point) {
+        const i = this.parts.findIndex(e => e.point === point);
+        if (i) {
+            this.parts[i].state = Status.HIT;
+        }
+        if (this.isDead()) {
+            console.log("Nave distrutta");
+        }
     }
 
     isDead() {
@@ -45,22 +63,16 @@ class Ship {
     }
 }
 
-class Cell {
-    index = null;
-    name = "";
-    ship = false;
-    alreadyShot = false;
-    constructor(index, name) {
-        this.index = parseInt(index, 10);
-        this.name = name.toString();
-    }
-}
-
 class Grid {
+    classListener = 'cell';
     defaultDimension = 8;
     dimension = null;
     matrix = {};
     associations = [];
+
+    placing = null;
+    startposition = null;
+    endposition = null;
 
     constructor(dimension = null) {
         this.dimension = (dimension ? dimension : this.defaultDimension);
@@ -74,12 +86,19 @@ class Grid {
                 cells: []
             };
             for (let k = 0; k < this.dimension; k++) {
-                let cell =  new Cell(k, (k + 1));
+                let cell = new Point(k, i);
                 row.cells.push(cell);
             }
             this.matrix[row.name] = row;
         }
         this.render();
+        this.startListening();
+    }
+
+    getPoint(x, y) {
+        return this.associations.findIndex(e => {
+            return (e.point.x === x && e.point.y === y);
+        });
     }
 
     render() {
@@ -91,15 +110,82 @@ class Grid {
             rowNode.className = 'row';
             col.cells.forEach(cell => {
                 let node = document.createElement('div');
-                node.className = 'cell';
-                node.innerHTML = col.name + " - " + cell.name;
+                node.className = this.classListener;
+                node.setAttribute('data-x', cell.x);
+                node.setAttribute('data-y', cell.y);
+                // node.innerHTML = col.name + " - " + cell.point.x;
                 rowNode.appendChild(node);
             })
             rendered.appendChild(rowNode);
         }
         document.getElementById('exe').appendChild(rendered);
     }
+
+    startListening() {
+        const _this = this;
+        $('.' + _this.classListener)
+            .on('mousedown', function () {
+                if (_this.placing) {
+                    const x = parseInt($(this).data('x'), 10);
+                    const y = parseInt($(this).data('y'), 10);
+                    _this.startposition = new Point(x, y);
+                    console.log("Start AT", _this.startposition);
+                }
+            })
+            .on('mouseup', function () {
+                if (_this.placing && _this.startposition) {
+                    const x = parseInt($(this).data('x'), 10);
+                    const y = parseInt($(this).data('y'), 10);
+                    _this.endposition = new Point(x, y);
+                    console.log("Ends AT", _this.endposition);
+                    _this.createAssociation();
+                }
+            })
+        $('.ship').on('click', function () {
+            const hp = parseInt($(this).data('hp'), 10);
+            _this.setPlacingShip(hp);
+        })
+    }
+
+    createAssociation() {
+        if (
+            this.startposition && 
+            this.endposition && 
+            this.placing &&
+            (this.startposition.x === this.endposition.x || this.startposition.y === this.endposition.y) &&
+            ((this.startposition.x + this.endposition.x) % this.placing === 0 || (this.startposition.y + this.endposition.y) % this.placing === 0)) {
+                if (this.startposition.x === this.endposition.x) { // Vertic
+                    const start = (this.startposition.y > this.endposition.y ? this.endposition.y : this.startposition.y);
+                    const end = (start === this.startposition.y ? this.endposition.y : this.startposition.y);
+                    for (let i = start; i < (end + 1); i++) {
+                        this.associations.push(new Association(new Point(this.startposition.x, i)));
+                    }
+                } else { // Horiz
+                    const start = (this.startposition.y > this.endposition.y ? this.endposition.y : this.startposition.y);
+                    const end = (start === this.startposition.y ? this.endposition.y : this.startposition.y);
+                    for (let i = start; i < (end + 1); i++) {
+                        this.associations.push(new Association(new Point(i, this.startposition.y)));
+                    }
+                }
+                console.log("Ok", this);
+        } else {
+            console.log("Error", this);
+        }
+        this.startposition = null;
+        this.endposition = null;
+    }
+
+    setPlacingShip(hp) {
+        this.placing = hp;
+        console.log("Stai posizionando una barca da " + hp);
+    }
 }
+
+const grid = new Grid();
+document.addEventListener('DOMContentLoaded', function() {
+    grid.init();
+})
+
 
 function getRowIndex (n) {
     return getChar(parseInt(n));
@@ -107,8 +193,3 @@ function getRowIndex (n) {
 function getChar (n) {
     return String.fromCharCode(65 + n);
 }
-
-document.addEventListener('DOMContentLoaded', function() {
-    const grid = new Grid();
-    grid.init();
-})
